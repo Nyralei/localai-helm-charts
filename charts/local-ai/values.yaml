@@ -285,6 +285,11 @@ persistence:
 
 # The image starts as root, hands the volumes to uid 10001 and drops to it. fsGroup keeps the
 # volumes writable on any storage class. Applies to every LocalAI pod.
+# A volume that already holds LocalAI v5 data (v5 run under chart 3.x, a restored backup): on its
+# first mount with this fsGroup the kubelet adds group read/write to every file, and LocalAI then
+# refuses to start ("must be a regular file with mode 0600 or less"). Set podSecurityContext: {}
+# for such volumes (the image's entrypoint still hands the default paths to uid 10001), or repair
+# them once: see "Upgrading from 3.x" in the README.
 podSecurityContext:
   fsGroup: 10001
   fsGroupChangePolicy: OnRootMismatch

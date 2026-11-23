@@ -352,3 +352,21 @@ The image now runs as uid 10001. Existing volumes are handed over to that user o
 (this can take a while on a large models volume). On NFS with `root_squash` (3.x's ReadWriteMany
 default often is), root can't do that: give the export to uid/gid 10001 first, or set
 `LOCALAI_RUN_AS_ROOT=true` in `env`.
+
+If you already ran a LocalAI v5 image on the 3.x volumes, the data volume holds private files
+(add-on state, keys) that LocalAI requires to be mode 0600. On the first mount with the default
+`podSecurityContext.fsGroup`, the kubelet adds group read/write to every file of the volume, and
+LocalAI then stops with "must be a regular file with mode 0600 or less". Either set
+`podSecurityContext: {}` before the upgrade (the image's entrypoint still hands the default paths
+to uid 10001), or repair the volume once after the first start. With the frontend scaled to 0:
+
+```bash
+kubectl run local-ai-fix-perms --rm -i --restart=Never --image=busybox --overrides='{"spec":{
+  "containers":[{"name":"fix","image":"busybox",
+    "command":["sh","-c","find /data -mindepth 1 -type f -perm 0660 -exec chmod 0600 {} + ; find /data -mindepth 1 -type d -perm 2770 -exec chmod 0700 {} +"],
+    "volumeMounts":[{"name":"data","mountPath":"/data"}]}],
+  "volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"<fullname>-data"}}]}}'
+```
+
+It leaves the volume's top folder alone, so the kubelet doesn't walk the volume again
+(`fsGroupChangePolicy: OnRootMismatch`), and files LocalAI creates later keep their mode.
